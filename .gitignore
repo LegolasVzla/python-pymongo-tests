@@ -102,3 +102,8 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# seeders
+user.json
+category.json
+friendships.json
