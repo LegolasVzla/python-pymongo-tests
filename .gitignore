@@ -110,3 +110,7 @@ category.json
 friendships.json
 tags.json
 spots_tags.json
+spots.json
+site_images.json
+spot_categories.json
+spot_users.json
