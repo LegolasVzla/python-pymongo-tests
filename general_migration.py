@@ -54,18 +54,23 @@ def mongo_user_extraction(monCli,monDB,pgcon,pgcur):
 			# pprint(data)
 			print (bcolors.OKBLUE + "Executing User data migration. Row: "+ str(i) + bcolors.ENDC)
 
+	# This part will be overwritten in spot migration
 	# Generate all the seeders needed
+	'''
 	query = "SELECT json_agg(a.*) FROM (SELECT id, email, status_account, created_at, updated_at, is_active, is_deleted FROM users) a"
 	filename = "user"
 
 	# Generate json user data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
+	'''
 
 def mongo_friends_extraction(monCli,monDB,pgcon,pgcur):
 	query = ""
 	user_id = None
 	friend_id = None
 	full_user_name = ""
+	first_name = ""
+	last_name = ""
 	pgcur.execute("SELECT id,email FROM users")
 	json_data_users = pgcur.fetchall()
 
@@ -86,8 +91,18 @@ def mongo_friends_extraction(monCli,monDB,pgcon,pgcur):
 		# For each mongo friendships document, insert in postgres friendships table
 		postgres_query_load(pgcon,pgcur,friends_data,query)
 
-		# Add the fullname to the users
-		pgcur.execute("UPDATE users SET first_name = '"+full_user_name+"' WHERE id="+str(user_id))
+		if(len(full_user_name.split(' ')) == 2):
+			first_name = full_user_name.split(' ')[0]
+			last_name = full_user_name.split(' ')[1]
+		elif(len(full_user_name.split(' ')) == 3):
+			first_name = full_user_name.split(' ')[0] + " " + full_user_name.split(' ')[1]
+			last_name = full_user_name.split(' ')[2]
+		elif(len(full_user_name.split(' ')) == 4):
+			first_name = full_user_name.split(' ')[0] + " " + full_user_name.split(' ')[1]
+			last_name = full_user_name.split(' ')[2] + " " + full_user_name.split(' ')[3]
+
+		# Add the first_name and last_name to the users
+		pgcur.execute("UPDATE users SET first_name = '"+first_name+"', last_name = '"+last_name+"' WHERE id="+str(user_id))
 
 		print (bcolors.OKBLUE + "Executing Friendships data migration. Row: "+ str(i) + bcolors.ENDC)
 
@@ -220,17 +235,18 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 				postgres_query_load(pgcon,pgcur,i,query)
 
 		# Add missing fullnames to the users
-		pgcur.execute("UPDATE users SET first_name = '"+spot_data['user']['fullname']+"' WHERE id="+str(user_id))
+		if(len(spot_data['user']['fullname'].split(' ')) == 2):
+			first_name = spot_data['user']['fullname'].split(' ')[0]
+			last_name = spot_data['user']['fullname'].split(' ')[1]
+		elif(len(spot_data['user']['fullname'].split(' ')) == 3):
+			first_name = spot_data['user']['fullname'].split(' ')[0] + " " + spot_data['user']['fullname'].split(' ')[1]
+			last_name = spot_data['user']['fullname'].split(' ')[2]
+		elif(len(spot_data['user']['fullname'].split(' ')) == 4):
+			first_name = spot_data['user']['fullname'].split(' ')[0] + " " + spot_data['user']['fullname'].split(' ')[1]
+			last_name = spot_data['user']['fullname'].split(' ')[2] + " " + spot_data['user']['fullname'].split(' ')[3]
 
-		spot_name = spot_data['title'].replace("'",'`')
-		query = "INSERT INTO spots (name,created_at,updated_at) VALUES ('"+spot_name+"','"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
-
-		# Insert the current spot
-		postgres_query_load(pgcon,pgcur,i,query)
-
-		print (bcolors.OKBLUE + "Executing Spots data migration. Row: "+ str(i) + bcolors.ENDC)
-
-		spot_id = pgcur.fetchone()[0]
+		# Add the first_name and last_name to the users
+		pgcur.execute("UPDATE users SET first_name = '"+first_name+"', last_name = '"+last_name+"' WHERE id="+str(user_id))
 
 		# Check if the spots has review value
 		try:
@@ -254,43 +270,69 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 			print (bcolors.WARNING + "New Spot Status: "+ spot_data['status'] + bcolors.ENDC)
 			#time.sleep(1)
 
+		spot_name = spot_data['title'].replace("'",'`')
+
+		# HERE will be the PoSTGis geolocalization translate code
+
+		query = "INSERT INTO spots (user_id,name,review,remarks,status_id,is_privated,lat,long,created_at,updated_at) VALUES ("+str(user_id)+",'"+spot_name+"','"+str(review)+"','"+str(remarks)+"',"+str(status_id)+","+str(is_privated)+","+str(spot_data['place']['point']['coordinates'][0])+","+str(spot_data['place']['point']['coordinates'][1])+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
+
+		print (bcolors.OKBLUE + "Executing Spots data migration. Row: "+ str(i) + bcolors.ENDC)
+
+		# Insert the current spot
+		postgres_query_load(pgcon,pgcur,i,query)
+
+		spot_id = pgcur.fetchone()[0]
+
 		query = "INSERT INTO user_actions (entity_action_id,types_user_actions_id,created_at) VALUES ("+str(spot_id)+","+str(1)+",'"+spot_data['createdAt'].isoformat()+"')"
+
+		print (bcolors.OKBLUE + "Executing User_actions data migration. Row: "+ str(i) + bcolors.ENDC)
 
 		# Insert the user_actions
 		postgres_query_load(pgcon,pgcur,i,query)
 
-		print (bcolors.OKBLUE + "Executing User_actions data migration. Row: "+ str(i) + bcolors.ENDC)
-
 		# Insert the spot_users data
-		query = "INSERT INTO spot_users (user_id,spot_id,review,remarks,status_id,is_privated,created_at,updated_at) VALUES ("+str(user_id)+","+str(spot_id)+",'"+str(review)+"','"+str(remarks)+"',"+str(status_id)+","+str(is_privated)+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
+		#query = "INSERT INTO spot_users (user_id,spot_id,review,remarks,status_id,is_privated,created_at,updated_at) VALUES ("+str(user_id)+","+str(spot_id)+",'"+str(review)+"','"+str(remarks)+"',"+str(status_id)+","+str(is_privated)+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
 
-		postgres_query_load(pgcon,pgcur,i,query)
+		#postgres_query_load(pgcon,pgcur,i,query)
 
-		print (bcolors.OKBLUE + "Executing Spots_users data migration. Row: "+ str(i) + bcolors.ENDC)
+		#print (bcolors.OKBLUE + "Executing Spots_users data migration. Row: "+ str(i) + bcolors.ENDC)
 
-		spot_users_id = pgcur.fetchone()[0]
+		#spot_users_id = pgcur.fetchone()[0]
 
-		query = "INSERT INTO spot_categories (user_id,categories_id,created_at,updated_at) VALUES ("+str(spot_users_id)+","+str(category_id)+",'"+spot_data['createdAt'].isoformat()+"',now())"
+		query = "INSERT INTO spot_categories (spot_id,categories_id,created_at,updated_at) VALUES ("+str(spot_id)+","+str(category_id)+",'"+spot_data['createdAt'].isoformat()+"',now())"
+
+		print (bcolors.OKBLUE + "Executing Spots_categories data migration. Row: "+ str(i) + bcolors.ENDC)
 
 		# Insert the spot_categories data
 		postgres_query_load(pgcon,pgcur,i,query)				
-
-		print (bcolors.OKBLUE + "Executing Spots_categories data migration. Row: "+ str(i) + bcolors.ENDC)
 
 		# For each gallery, iterates over all images
 		for j,gallery_data in enumerate(spot_data['gallery']):
 
 			query = "INSERT INTO site_images (spot_id,uri,extension,principalImage,original,created_at,updated_at) VALUES ("+str(spot_id)+",'"+gallery_data['images']['uri']+"','"+gallery_data['extension']+"','"+str(gallery_data['principalImage'])+"','"+gallery_data['images']['type']+"','"+gallery_data['created'].isoformat()+"',now())"
 
+			print (bcolors.OKBLUE + "Executing Site_Images data migration. Row: "+ str(j) + " of the Spot row: " + str(i) + " iteration" + bcolors.ENDC)
+
 			# Insert the data image
 			postgres_query_load(pgcon,pgcur,i,query)
 
-			print (bcolors.OKBLUE + "Executing Site_Images data migration. Row: "+ str(j) + " of the Spot row: " + str(i) + " iteration" + bcolors.ENDC)
-
-	print (bcolors.OKBLUE + "Generating spots, site_images, spots_users and spot_categories seeders"+ bcolors.ENDC)
+	print (bcolors.OKBLUE + "Generating user_actions, spots, site_images and spot_categories seeders"+ bcolors.ENDC)
 
 	# Generate all the seeders needed
-	query = "SELECT json_agg(a.*) FROM (SELECT id,name,created_at,updated_at,is_active,is_deleted FROM spots) a"
+	query = "SELECT json_agg(a.*) FROM (SELECT id, email, status_account, created_at, updated_at, is_active, is_deleted FROM users) a"
+	filename = "user"
+
+	# Generate json user data
+	postgres_json_export_to_file(pgcon,pgcur,query,filename)
+
+	query = "SELECT json_agg(a.*) FROM (SELECT id,entity_action_id,types_user_actions_id,created_at,is_active,is_deleted FROM user_actions) a"
+	filename = "user_actions"
+
+	# Generate json user_actions data
+	postgres_json_export_to_file(pgcon,pgcur,query,filename)
+
+	# Generate all the seeders needed
+	query = "SELECT json_agg(a.*) FROM (SELECT id,name,lat,long,created_at,updated_at,is_active,is_deleted FROM spots) a"
 	filename = "spots"
 
 	# Generate json spots data
@@ -302,13 +344,13 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	# Generate json site_images data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
 
-	query = "SELECT json_agg(a.*) FROM (SELECT id,user_id,spot_id,is_privated,review,remarks,status_id,created_at,updated_at,is_active,is_deleted FROM spot_users) a"
-	filename = "spot_users"
+	#query = "SELECT json_agg(a.*) FROM (SELECT id,user_id,spot_id,is_privated,review,remarks,status_id,created_at,updated_at,is_active,is_deleted FROM spot_users) a"
+	#filename = "spot_users"
 
 	# Generate json spot_users data
-	postgres_json_export_to_file(pgcon,pgcur,query,filename)
+	#postgres_json_export_to_file(pgcon,pgcur,query,filename)
 
-	query = "SELECT json_agg(a.*) FROM (SELECT id,user_id,categories_id,created_at,updated_at,is_active,is_deleted FROM spot_categories) a"
+	query = "SELECT json_agg(a.*) FROM (SELECT id,spot_id,categories_id,created_at,updated_at,is_active,is_deleted FROM spot_categories) a"
 	filename =  "spot_categories"
 
 	# Generate json spot_categories data
