@@ -168,8 +168,12 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	status_id = None
 	review = None
 	remarks = None
+	place_name = None
 	spot_name = None
 	is_privated = False
+	country_name = None
+	city_name = None
+	state_name = None
 	pgcur.execute("SELECT id,email FROM users")
 	json_data_users = pgcur.fetchall()
 
@@ -272,11 +276,35 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 
 		spot_name = spot_data['title'].replace("'",'`')
 
-		# HERE will be the PoSTGis geolocalization translate code
+		# Check if the spots has cityName value
+		try:
+			place_name = spot_data['place']['name'].replace("'",'`')
+		except Exception as e:
+			place_name = None
 
-		query = "INSERT INTO spots (user_id,name,review,remarks,status_id,is_privated,lat,long,created_at,updated_at) VALUES ("+str(user_id)+",'"+spot_name+"','"+str(review)+"','"+str(remarks)+"',"+str(status_id)+","+str(is_privated)+","+str(spot_data['place']['point']['coordinates'][0])+","+str(spot_data['place']['point']['coordinates'][1])+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
+		# Check if the spots has cityName value
+		try:
+			city_name = spot_data['place']['cityName']
+			city_name = city_name.replace("'",'`')
+
+		except Exception as e:
+			city_name = None
+
+		# Check if the spots has stateName value
+		try:
+			state_name = spot_data['place']['stateName']
+			state_name = state_name.replace("'",'`')
+		except Exception as e:
+			state_name = None
+
+		query = "INSERT INTO spots (user_id,name,review,remarks,place_name,country_name,city_name,state_name, status_id,is_privated,lat,long,created_at,updated_at) VALUES ("+str(user_id)+",'"+str(spot_name)+"','"+str(review)+"','"+str(remarks)+"','"+str(place_name)+"','"+str(spot_data['place']['countryName'])+"','"+str(city_name)+"','"+str(state_name)+"',"+str(status_id)+","+str(is_privated)+","+str(spot_data['place']['point']['coordinates'][0])+","+str(spot_data['place']['point']['coordinates'][1])+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
 
 		print (bcolors.OKBLUE + "Executing Spots data migration. Row: "+ str(i) + bcolors.ENDC)
+
+		'''
+		# PoSTGis geolocalization translate code from lat and long
+		pgcur.execute("UPDATE spots SET geom = ST_SetSRID(ST_MakePoint(long,lat),4326);")
+		'''
 
 		# Insert the current spot
 		postgres_query_load(pgcon,pgcur,i,query)
@@ -289,15 +317,6 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 
 		# Insert the user_actions
 		postgres_query_load(pgcon,pgcur,i,query)
-
-		# Insert the spot_users data
-		#query = "INSERT INTO spot_users (user_id,spot_id,review,remarks,status_id,is_privated,created_at,updated_at) VALUES ("+str(user_id)+","+str(spot_id)+",'"+str(review)+"','"+str(remarks)+"',"+str(status_id)+","+str(is_privated)+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
-
-		#postgres_query_load(pgcon,pgcur,i,query)
-
-		#print (bcolors.OKBLUE + "Executing Spots_users data migration. Row: "+ str(i) + bcolors.ENDC)
-
-		#spot_users_id = pgcur.fetchone()[0]
 
 		query = "INSERT INTO spot_categories (spot_id,categories_id,created_at,updated_at) VALUES ("+str(spot_id)+","+str(category_id)+",'"+spot_data['createdAt'].isoformat()+"',now())"
 
@@ -319,26 +338,26 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	print (bcolors.OKBLUE + "Generating user_actions, spots, site_images and spot_categories seeders"+ bcolors.ENDC)
 
 	# Generate all the seeders needed
-	query = "SELECT json_agg(a.*) FROM (SELECT id, email, status_account, created_at, updated_at, is_active, is_deleted FROM users) a"
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM users) a"
 	filename = "user"
 
 	# Generate json user data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
 
-	query = "SELECT json_agg(a.*) FROM (SELECT id,entity_action_id,types_user_actions_id,created_at,is_active,is_deleted FROM user_actions) a"
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM user_actions) a"
 	filename = "user_actions"
 
 	# Generate json user_actions data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
 
 	# Generate all the seeders needed
-	query = "SELECT json_agg(a.*) FROM (SELECT id,name,lat,long,created_at,updated_at,is_active,is_deleted FROM spots) a"
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM spots) a"
 	filename = "spots"
 
 	# Generate json spots data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
 
-	query = "SELECT json_agg(a.*) FROM (SELECT id,spot_id,uri,extension,original,principalimage,created_at,updated_at,is_active,is_deleted FROM site_images) a"
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM site_images) a"
 	filename =  "site_images"
 
 	# Generate json site_images data
@@ -350,11 +369,53 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	# Generate json spot_users data
 	#postgres_json_export_to_file(pgcon,pgcur,query,filename)
 
-	query = "SELECT json_agg(a.*) FROM (SELECT id,spot_id,categories_id,created_at,updated_at,is_active,is_deleted FROM spot_categories) a"
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM spot_categories) a"
 	filename =  "spot_categories"
 
 	# Generate json spot_categories data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
+
+def mongo_reports_extraction(monCli,monDB,pgcon,pgcur):
+	
+	spot_id = None
+	reports_type_data_id = None
+	pgcur.execute("SELECT id,user_id,name FROM spots")
+	json_data_spots = pgcur.fetchall()
+
+	pgcur.execute("SELECT id,name FROM reports_type")
+	json_reports_type = pgcur.fetchall()
+
+	# For reports, iterates over all the reports
+	for i,reports_data in enumerate(monDB.reports.find()):
+		for j,spots_data in enumerate(json_data_spots):
+			# Searching the spot_id of the report by spot name comparison
+			if str(reports_data['spot']['title']) == spots_data[2]:
+				spot_id=spots_data[0]
+				user_id=spots_data[1]
+
+				# Searching the reports_type_data of the report by name comparison
+				for k,reports_type_data in enumerate(json_reports_type):
+					if str(reports_data['type']) == reports_type_data[1]:
+						reports_type_data_id=reports_type_data[0]
+
+				# Reports part
+				query = "INSERT INTO reports (user_id,spot_id,reports_type_id,types_user_reports_id,created_at,update_at) VALUES ("+str(user_id)+","+str(spot_id)+","+str(reports_type_data_id)+","+str(2)+",'"+reports_data['date'].isoformat()+"',now())"
+
+				spot_id = None
+
+				print (bcolors.OKBLUE + "Executing reports data migration. Row: "+ str(i) + bcolors.ENDC)
+
+				# Insert the reports
+				postgres_query_load(pgcon,pgcur,i,query)
+				break
+
+	# Generate all the seeders needed
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM reports) a"
+	filename = "reports"
+
+	# Generate json user data
+	postgres_json_export_to_file(pgcon,pgcur,query,filename)
+
 
 def main():
 	monCli, monDB = mongoConnection()
@@ -366,6 +427,7 @@ def main():
 	mongo_friends_extraction(monCli,monDB,pgcon,pgcur)
 	mongo_tags_extraction(monCli,monDB,pgcon,pgcur)
 	mongo_spots_extraction(monCli,monDB,pgcon,pgcur)
+	mongo_reports_extraction(monCli,monDB,pgcon,pgcur)
 
 	pgcon.close()
 	pgcur.close()	
