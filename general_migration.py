@@ -106,6 +106,8 @@ def mongo_friends_extraction(monCli,monDB,pgcon,pgcur):
 
 		print (bcolors.OKBLUE + "Executing Friendships data migration. Row: "+ str(i) + bcolors.ENDC)
 
+	print (bcolors.OKBLUE + "Generating friendships seeder"+ bcolors.ENDC)
+
 	# Generate all the seeders needed
 	query = "SELECT json_agg(a.*) FROM (SELECT id,friend_id,friendable_id,status,created_at, updated_at,is_active,is_deleted FROM friendships) a"
 	filename = "friendships"
@@ -142,6 +144,8 @@ def mongo_tags_extraction(monCli,monDB,pgcon,pgcur):
 		postgres_query_load(pgcon,pgcur,i,query)
 
 		print (bcolors.OKBLUE + "Executing Tags data migration. Row: "+ str(i) + bcolors.ENDC)
+
+	print (bcolors.OKBLUE + "Generating tags and spots_tags seeders"+ bcolors.ENDC)
 
 	# Generate all the seeders needed
 	query = "SELECT json_agg(a.*) FROM (SELECT id,name,created_at,updated_at,is_active,is_deleted FROM tags) a"
@@ -409,6 +413,8 @@ def mongo_reports_extraction(monCli,monDB,pgcon,pgcur):
 				postgres_query_load(pgcon,pgcur,i,query)
 				break
 
+	print (bcolors.OKBLUE + "Generating reports seeder"+ bcolors.ENDC)
+
 	# Generate all the seeders needed
 	query = "SELECT json_agg(a.*) FROM (SELECT * FROM reports) a"
 	filename = "reports"
@@ -416,6 +422,174 @@ def mongo_reports_extraction(monCli,monDB,pgcon,pgcur):
 	# Generate json user data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
 
+def mongo_collections_extraction(monCli,monDB,pgcon,pgcur):
+	
+	spot_id = None
+	collection_id = None
+	reports_type_data_id = None
+	state_name = None
+	city_name = None
+	collections_query = ""
+	pgcur.execute("SELECT id,country_name,state_name,city_name FROM spots")
+	json_data_spots = pgcur.fetchall()
+
+	pgcur.execute("SELECT id,name FROM category")
+	json_categories_type = pgcur.fetchall()
+
+	# For all the place_summaries (collections), iterates over all the reports
+	for i,collections_data in enumerate(monDB.place_summaries.find()):
+		for j,spots_data in enumerate(json_data_spots):
+
+			# Check if the spots has cityName value
+			try:
+				city_name = collections_data['lastLocation']['cityName']
+				city_name = city_name.replace("'",'`')
+			except Exception as e:
+				city_name = None
+
+			# Check if the spots has stateName value
+			try:
+				state_name = collections_data['lastLocation']['stateName']
+				state_name = state_name.replace("'",'`')
+			except Exception as e:
+				state_name = None
+
+			# If the spots has city name and state name
+			if(city_name and state_name):
+
+				# Search the spots for every collection and compare it with the spots
+				if (str(collections_data['lastLocation']['countryName']) == spots_data[1] and
+					state_name == spots_data[2] and city_name == spots_data[3]):
+
+					# Get the spot_id
+					spot_id=spots_data[0]
+
+					# Check if the current collection name already exists
+					pgcur.execute("SELECT id,name FROM collections WHERE name ='"+collections_data['name']+"'")
+					collections_query = pgcur.fetchall()
+
+					# If found the collection, get the id
+					if collections_query:
+
+						collection_id = collections_query[0][0]
+
+					# If not found the collection, insert it
+					else:
+
+						# Collections part
+						query = "INSERT INTO collections (name,created_at,update_at) VALUES ('"+str(collections_data['name'])+"','"+collections_data['createdAt'].isoformat()+"',now()) RETURNING id"
+
+						print (bcolors.OKBLUE + "Executing collection data migration. Row: "+ str(i) + bcolors.ENDC)
+
+						# Insert the collection
+						postgres_query_load(pgcon,pgcur,i,query)
+
+						collection_id = pgcur.fetchone()[0]
+
+					# spots_collections part
+					query = "INSERT INTO spots_collections (spot_id,collection_id,created_at,update_at) VALUES ("+str(spot_id)+",'"+str(collection_id)+"','"+collections_data['createdAt'].isoformat()+"',now())"
+
+					print (bcolors.OKBLUE + "Executing spots_collections data migration. Row: "+ str(i) + bcolors.ENDC)
+
+					# Insert the spots_collections
+					postgres_query_load(pgcon,pgcur,i,query)
+
+			# If the spots hasn't city name but has state name
+			elif(city_name != None and state_name == None):
+
+				# Search the spots for every collection and compare it with the spots
+				if (str(collections_data['lastLocation']['countryName']) == spots_data[1] and
+					str(collections_data['lastLocation']['cityName']) == spots_data[3]):
+
+					# Get the spot_id
+					spot_id=spots_data[0]
+
+					# Check if the current collection name already exists
+					pgcur.execute("SELECT id,name FROM collections WHERE name ='"+collections_data['name']+"'")
+					collections_query = pgcur.fetchall()
+
+					# If found the collection, get the id
+					if collections_query:
+
+						collection_id = collections_query[0][0]
+
+					# If not found the collection, insert it
+					else:
+
+						# Collections part
+						query = "INSERT INTO collections (name,created_at,update_at) VALUES ('"+str(collections_data['name'])+"','"+collections_data['createdAt'].isoformat()+"',now()) RETURNING id"
+
+						print (bcolors.OKBLUE + "Executing collection data migration. Row: "+ str(i) + bcolors.ENDC)
+
+						# Insert the collection
+						postgres_query_load(pgcon,pgcur,i,query)
+
+						collection_id = pgcur.fetchone()[0]
+
+					# spots_collections part
+					query = "INSERT INTO spots_collections (spot_id,collection_id,created_at,update_at) VALUES ("+str(spot_id)+",'"+str(collection_id)+"','"+collections_data['createdAt'].isoformat()+"',now())"
+
+					print (bcolors.OKBLUE + "Executing spots_collections data migration. Row: "+ str(i) + bcolors.ENDC)
+
+					# Insert the spots_collections
+					postgres_query_load(pgcon,pgcur,i,query)
+
+			# If the spots has city name but hasn't state name
+			elif(city_name == None and state_name != None):				
+
+				# Search the spots for every collection and compare it with the spots
+				if (str(collections_data['lastLocation']['countryName']) == spots_data[1] and
+					str(collections_data['lastLocation']['stateName']) == spots_data[2]):
+
+					# Get the spot_id
+					spot_id=spots_data[0]
+
+					# Check if the current collection name already exists
+					pgcur.execute("SELECT id,name FROM collections WHERE name ='"+collections_data['name']+"'")
+					collections_query = pgcur.fetchall()
+
+					# If found the collection, get the id
+					if collections_query:
+
+						collection_id = collections_query[0][0]
+
+					# If not found the collection, insert it
+					else:
+
+						# Collections part
+						query = "INSERT INTO collections (name,created_at,update_at) VALUES ('"+str(collections_data['name'])+"','"+collections_data['createdAt'].isoformat()+"',now()) RETURNING id"
+
+						print (bcolors.OKBLUE + "Executing collection data migration. Row: "+ str(i) + bcolors.ENDC)
+
+						# Insert the collection
+						postgres_query_load(pgcon,pgcur,i,query)
+
+						collection_id = pgcur.fetchone()[0]
+
+					# spots_collections part
+					query = "INSERT INTO spots_collections (spot_id,collection_id,created_at,update_at) VALUES ("+str(spot_id)+",'"+str(collection_id)+"','"+collections_data['createdAt'].isoformat()+"',now())"
+
+					print (bcolors.OKBLUE + "Executing spots_collections data migration. Row: "+ str(i) + bcolors.ENDC)
+
+					# Insert the spots_collections
+					postgres_query_load(pgcon,pgcur,i,query)
+
+
+	print (bcolors.OKBLUE + "Generating collections and spots_collections seeders"+ bcolors.ENDC)
+
+	# Generate all the seeders needed
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM collections) a"
+	filename = "collections"
+
+	# Generate json collections data
+	postgres_json_export_to_file(pgcon,pgcur,query,filename)
+
+	# Generate all the seeders needed
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM spots_collections) a"
+	filename = "spots_collections"
+
+	# Generate json spots_collections data
+	postgres_json_export_to_file(pgcon,pgcur,query,filename)
 
 def main():
 	monCli, monDB = mongoConnection()
@@ -428,6 +602,7 @@ def main():
 	mongo_tags_extraction(monCli,monDB,pgcon,pgcur)
 	mongo_spots_extraction(monCli,monDB,pgcon,pgcur)
 	mongo_reports_extraction(monCli,monDB,pgcon,pgcur)
+	mongo_collections_extraction(monCli,monDB,pgcon,pgcur)
 
 	pgcon.close()
 	pgcur.close()	
