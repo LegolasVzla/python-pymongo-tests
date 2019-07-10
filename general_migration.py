@@ -202,7 +202,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		# If there almost one tag
 		if(len(spot_data['tags'])>0):
 
-			# For each tags list, search for the tag_id category name comparison
+			# For each tags list, search for the tag_id and compare them by name
 			for j in spot_data['tags']:
 
 				tag_validator = False
@@ -237,10 +237,12 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 				pgcur.execute("SELECT id,name FROM tags")
 				json_data_tags = pgcur.fetchall()
 
+				'''
 				query = "INSERT INTO user_actions (entity_action_id,types_user_actions_id,created_at) VALUES ("+str(spots_tags_id)+","+str(2)+",'"+spot_data['createdAt'].isoformat()+"')"
 
 				# Insert the user_actions
 				postgres_query_load(pgcon,pgcur,i,query)
+				'''
 
 		# Add missing fullnames to the users
 		if(len(spot_data['user']['fullname'].split(' ')) == 2):
@@ -339,6 +341,30 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 			# Insert the data image
 			postgres_query_load(pgcon,pgcur,i,query)
 
+		# This section is to insert in user_actions related with tags
+		pgcur.execute("SELECT st.id,t.name FROM tags t, spots_tags st WHERE st.tags_id = t.id")
+		json_data_tags = pgcur.fetchall()
+
+		# If there almost one tag
+		if(len(spot_data['tags'])>0):
+
+			# For each tags list, search for the tag_id and compare them by name
+			for j in spot_data['tags']:
+
+				# For each row in the tags table
+				for k in json_data_tags:
+
+					# If the tags names are equals, get the tag_id from the spots_tags table
+					if j == k[1]:
+						tag_id=k[0]
+
+						query = "INSERT INTO user_actions (entity_action_id,types_user_actions_id,spot_id,created_at) VALUES ("+str(tag_id)+","+str(2)+","+str(tag_id)+",'"+spot_data['createdAt'].isoformat()+"')"
+
+						print (bcolors.OKBLUE + "Executing User_actions data migration. Row: "+ str(i) + bcolors.ENDC)
+
+						# Insert the user_actions
+						postgres_query_load(pgcon,pgcur,i,query)
+
 	print (bcolors.OKBLUE + "Generating user_actions, spots, site_images and spot_categories seeders"+ bcolors.ENDC)
 
 	# Generate all the seeders needed
@@ -403,7 +429,7 @@ def mongo_reports_extraction(monCli,monDB,pgcon,pgcur):
 						reports_type_data_id=reports_type_data[0]
 
 				# Reports part
-				query = "INSERT INTO reports (user_id,spot_id,reports_type_id,types_user_reports_id,created_at,update_at) VALUES ("+str(user_id)+","+str(spot_id)+","+str(reports_type_data_id)+","+str(2)+",'"+reports_data['date'].isoformat()+"',now())"
+				query = "INSERT INTO reports_actions (user_id,spot_id,reports_type_id,types_user_reports_id,created_at,update_at) VALUES ("+str(user_id)+","+str(spot_id)+","+str(reports_type_data_id)+","+str(2)+",'"+reports_data['date'].isoformat()+"',now())"
 
 				spot_id = None
 
@@ -413,11 +439,11 @@ def mongo_reports_extraction(monCli,monDB,pgcon,pgcur):
 				postgres_query_load(pgcon,pgcur,i,query)
 				break
 
-	print (bcolors.OKBLUE + "Generating reports seeder"+ bcolors.ENDC)
+	print (bcolors.OKBLUE + "Generating reports_actions seeder"+ bcolors.ENDC)
 
 	# Generate all the seeders needed
-	query = "SELECT json_agg(a.*) FROM (SELECT * FROM reports) a"
-	filename = "reports"
+	query = "SELECT json_agg(a.*) FROM (SELECT * FROM reports_actions) a"
+	filename = "reports_actions"
 
 	# Generate json user data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
@@ -595,8 +621,6 @@ def main():
 	monCli, monDB = mongoConnection()
 	pgcon, pgcur = postgresConnection()	
 
-	original_path = os.getcwd()
-	#os.chdir(original_path+"/db/seeders")
 	mongo_user_extraction(monCli,monDB,pgcon,pgcur)
 	mongo_friends_extraction(monCli,monDB,pgcon,pgcur)
 	mongo_tags_extraction(monCli,monDB,pgcon,pgcur)

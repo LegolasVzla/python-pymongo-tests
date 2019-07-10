@@ -141,5 +141,6 @@ user_actions.json
 reports.json
 collections.json
 spots_collections.json
+reports_action.json
 
 # End of https://www.gitignore.io/api/python
