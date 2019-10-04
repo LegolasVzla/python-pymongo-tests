@@ -1,4 +1,5 @@
 psql -U postgres -a -f ./main_database.sql
+psql -U postgres -d result_database -a -c "CREATE EXTENSION postgis;"
 psql -U postgres -d result_database -a -f ./public/tables/users.sql
 psql -U postgres -d result_database -a -f ./public/tables/friendships.sql
 psql -U postgres -d result_database -a -f ./public/tables/tags.sql

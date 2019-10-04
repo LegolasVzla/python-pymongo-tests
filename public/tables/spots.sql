@@ -18,8 +18,6 @@ CREATE TABLE public.spots(
     updated_at timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true,
     is_deleted boolean DEFAULT false,
-    "position" geometry(Point,4326),
-    geom geometry,
     CONSTRAINT fk_spots_users FOREIGN KEY (users_id)
         REFERENCES public.users (id) MATCH SIMPLE
         ON UPDATE NO ACTION

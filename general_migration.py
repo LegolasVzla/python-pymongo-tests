@@ -38,7 +38,7 @@ def postgres_json_export_to_file(pgcon,pgcur,query,filename):
 
 def mongo_user_extraction(monCli,monDB,pgcon,pgcur):
 	collections = mongo_collections_list(monCli,monDB)
-	user_collection_name = collections['ibeentest'][1]
+	user_collection_name = collections['ibeen'][1]
 	user_collection_data = monDB[user_collection_name]
 	query = ""
 	first_name = ""
@@ -226,7 +226,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		print (bcolors.OKBLUE + "Executing Spots data migration. Row: "+ str(i) + bcolors.ENDC)
 
 		# PoSTGis geolocalization translate code from lat and long to geom and position fields
-		pgcur.execute("UPDATE spots SET geom = ST_SetSRID(ST_MakePoint(long,lat),4326) and position ST_SetSRID(ST_MakePoint(long,lat),4326);")
+		#pgcur.execute("UPDATE spots SET geom = ST_SetSRID(ST_MakePoint(long,lat),4326) and position ST_SetSRID(ST_MakePoint(long,lat),4326);")
 
 		# Insert the current spot
 

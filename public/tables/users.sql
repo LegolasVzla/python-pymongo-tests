@@ -8,13 +8,5 @@ CREATE TABLE public.users(
     updated_at timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true,
     is_deleted boolean DEFAULT false,
-    full_name character varying COLLATE pg_catalog."default",
-    CONSTRAINT fk_users_system_statuses FOREIGN KEY (status_account)
-        REFERENCES public.system_statuses (id) MATCH SIMPLE
-        ON UPDATE NO ACTION
-        ON DELETE CASCADE,
-    CONSTRAINT fk_users_telephone_prefixes FOREIGN KEY (telephone_prefix_id)
-        REFERENCES public.telephone_prefixes (id) MATCH SIMPLE
-        ON UPDATE NO ACTION
-        ON DELETE CASCADE
+    full_name character varying COLLATE pg_catalog."default"
 );
