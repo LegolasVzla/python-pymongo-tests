@@ -138,6 +138,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	country_name = None
 	city_name = None
 	state_name = None
+	full_address = None
 	pgcur.execute("SELECT id,email FROM users")
 	json_data_users = pgcur.fetchall()
 
@@ -218,7 +219,9 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		except Exception as e:
 			state_name = None
 
-		query = "INSERT INTO spots (users_id,name,review,remarks,place_name,country_name,city_name,state_name, status_id,is_privated,lat,long,created_at,updated_at) VALUES ("+str(user_id)+",'"+str(spot_name)+"','"+str(review)+"','"+str(remarks)+"','"+str(place_name)+"','"+str(spot_data['place']['countryName'])+"','"+str(city_name)+"','"+str(state_name)+"',"+str(status_id)+","+str(is_privated)+","+str(spot_data['place']['point']['coordinates'][0])+","+str(spot_data['place']['point']['coordinates'][1])+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
+		full_address = str(spot_data['place']['countryName']) + ', ' + city_name
+
+		query = "INSERT INTO spots (users_id,name,review,remarks,place_name,country_name,city_name,state_name, status_id,is_privated,lat,long,created_at,updated_at,full_address) VALUES ("+str(user_id)+",'"+str(spot_name)+"','"+str(review)+"','"+str(remarks)+"','"+str(place_name)+"','"+str(spot_data['place']['countryName'])+"','"+str(city_name)+"','"+str(state_name)+"',"+str(status_id)+","+str(is_privated)+","+str(spot_data['place']['point']['coordinates'][0])+","+str(spot_data['place']['point']['coordinates'][1])+",'"+spot_data['createdAt'].isoformat()+"',now(),"+full_address+") RETURNING id"
 
 		print (bcolors.OKBLUE + "Executing Spots data migration. Row: "+ str(i) + bcolors.ENDC)
 
@@ -241,7 +244,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		postgres_query_load(pgcon,pgcur,i,query)
 		'''
 
-		query = "INSERT INTO spot_categories (spot_id,categories_id,created_at,updated_at) VALUES ("+str(spot_id)+","+str(category_id)+",'"+spot_data['createdAt'].isoformat()+"',now())"
+		query = "INSERT INTO spot_categories (spots_id,category_id,created_at,updated_at) VALUES ("+str(spot_id)+","+str(category_id)+",'"+spot_data['createdAt'].isoformat()+"',now())"
 
 		print (bcolors.OKBLUE + "Executing Spots_categories data migration. Row: "+ str(i) + bcolors.ENDC)
 
@@ -251,20 +254,12 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		# For each gallery, iterates over all images
 		for j,gallery_data in enumerate(spot_data['gallery']):
 
-			query = "INSERT INTO site_images (spot_id,uri,extension,principalImage,original,created_at,updated_at) VALUES ("+str(spot_id)+",'"+gallery_data['images']['uri']+"','"+gallery_data['extension']+"','"+str(gallery_data['principalImage'])+"','"+gallery_data['images']['type']+"','"+gallery_data['created'].isoformat()+"',now())"
+			query = "INSERT INTO site_images (spots_id,uri,extension,principalimage,original,created_at,updated_at) VALUES ("+str(spot_id)+",'"+gallery_data['images']['uri']+"','"+gallery_data['extension']+"','"+str(gallery_data['principalImage'])+"','"+gallery_data['images']['type']+"','"+gallery_data['created'].isoformat()+"',now())"
 
 			print (bcolors.OKBLUE + "Executing Site_Images data migration. Row: "+ str(j) + " of the Spot row: " + str(i) + " iteration" + bcolors.ENDC)
 
 			# Insert the data image
 			postgres_query_load(pgcon,pgcur,i,query)
-
-		#----------------------------------------------------
-		# Here will be the tag and spot tags generation
-
-		# 1. Do the user action validation and if not exists, generate the user action
-		# 2. Generate the tags
-		# 3. Generate 
-		#----------------------------------------------------
 
 		# This section is to insert in user_actions related with tags
 		pgcur.execute("SELECT st.id,t.name FROM tags t, spots_tags st WHERE st.tags_id = t.id")
@@ -299,29 +294,17 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 
 					tag_id = pgcur.fetchone()[0]
 
-				# In any case (tag already exist or new tag) insert a new spot_tag with the current tag_id
-				query = "INSERT INTO spot_tags (user_id,tags_id,created_at,updated_at) VALUES ("+str(user_id)+","+str(tag_id)+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
-
-				# Insert the current spots_tags
-				postgres_query_load(pgcon,pgcur,i,query)
-
-				spots_tags_id = pgcur.fetchone()[0]
-
-				# Reload the tags query
-				pgcur.execute("SELECT id,name FROM tags")
-				json_data_tags = pgcur.fetchall()
-
 				# Then generate the user_action related with the tag
 				# So, first, check if exists a previously user_action with 
 				# type_user_action = 1 (Spots tags) for the current Spot
-				pgcur.execute("SELECT id FROM user_actions WHERE spot_id="+str(spot_id)+" AND type_user_actions_id="+str(1));
-				spots_data = pgcur.fetchone()
+				pgcur.execute("SELECT id FROM user_actions WHERE spots_id="+str(spot_id)+" AND type_user_actions_id="+str(1));
+				user_actions = pgcur.fetchone()[0]
 
 				# If not found a previously user_action with type_user_action = 1 (Spots tags) for the current Spot, insert it
-				if not(spots_data):
+				if not(user_actions):
 
 					# Generate user actions with type user action = 1 (Spots tags)
-					query = "INSERT INTO user_actions (type_user_actions_id,spot_id,created_at) VALUES ("+str(1)+","+str(spot_id)+",'"+spot_data['createdAt'].isoformat()+"')"
+					query = "INSERT INTO user_actions (type_user_actions_id,spots_id,created_at) VALUES ("+str(1)+","+str(spot_id)+",'"+spot_data['createdAt'].isoformat()+"')"
 
 					print (bcolors.OKBLUE + "Executing User_action data migration. Row: "+ str(i) + bcolors.ENDC)
 
@@ -331,6 +314,18 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 				# If found a previously user_action with type_user_action = 1 (Spots tags) for the current Spot, do not do nothing
 				else:
 					pass
+
+				# Finally, in any case (tag already exist or new tag) insert a new spot_tag with the current tag_id
+				query = "INSERT INTO spot_tags (users_id,user_actions_id,tags_id,created_at,updated_at) VALUES ("+str(user_id)+","+str(user_actions)+","+str(tag_id)+",'"+spot_data['createdAt'].isoformat()+"',now())"
+
+				# Insert the current spots_tags
+				postgres_query_load(pgcon,pgcur,i,query)
+
+				#spots_tags_id = pgcur.fetchone()[0]
+
+				# Reload the tags query
+				pgcur.execute("SELECT id,name FROM tags")
+				json_data_tags = pgcur.fetchall()
 
 	print (bcolors.OKBLUE + "Generating user_actions, spots, site_images and spot_categories seeders"+ bcolors.ENDC)
 
