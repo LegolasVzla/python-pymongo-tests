@@ -159,58 +159,6 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 			if spot_data['categoryId'] == j[1]:
 				category_id=j[0]
 
-		# If there almost one tag
-		if(len(spot_data['tags'])>0):
-
-			# For each tags list, search for the tag_id and compare them by name
-			for j in spot_data['tags']:
-
-				tag_validator = False
-				
-				# Compare with the tags that are already stored in the tags table
-				for k in json_data_tags:
-
-					# If the tags names are equals, get the tag_id
-					if j == k[1]:
-						tag_id=k[0]
-						tag_validator = True
-
-				# Tag not found in the tags table, so it's a New tag
-				if not tag_validator:
-
-					print (bcolors.WARNING + "New Tag found: "+ str(j) + bcolors.ENDC)
-					#time.sleep(1)
-
-					query = "INSERT INTO tags (name,created_at,updated_at) VALUES ('"+j+"','"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
-
-					# Insert the new tag
-					postgres_query_load(pgcon,pgcur,i,query)
-
-					tag_id = pgcur.fetchone()[0]
-
-				#-------------------------------------
-				# Here will be the user action code related with spot tags
-				#-------------------------------------
-
-				# In any case (tag already exist or new tag) insert a new spot_tag with the current tag_id
-				query = "INSERT INTO spot_tags (user_id,tags_id,created_at,updated_at) VALUES ("+str(user_id)+","+str(tag_id)+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
-
-				# Insert the current spots_tags
-				postgres_query_load(pgcon,pgcur,i,query)
-
-				spots_tags_id = pgcur.fetchone()[0]
-
-				# Reload the tags query
-				pgcur.execute("SELECT id,name FROM tags")
-				json_data_tags = pgcur.fetchall()
-
-				'''
-				query = "INSERT INTO user_actions (entity_action_id,types_user_actions_id,created_at) VALUES ("+str(spots_tags_id)+","+str(2)+",'"+spot_data['createdAt'].isoformat()+"')"
-
-				# Insert the user_actions
-				postgres_query_load(pgcon,pgcur,i,query)
-				'''
-
 		# Add missing fullnames to the users
 		if(len(spot_data['user']['fullname'].split(' ')) == 2):
 			first_name = spot_data['user']['fullname'].split(' ')[0]
@@ -278,17 +226,10 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		pgcur.execute("UPDATE spots SET geom = ST_SetSRID(ST_MakePoint(long,lat),4326) and position ST_SetSRID(ST_MakePoint(long,lat),4326);")
 
 		# Insert the current spot
+
 		postgres_query_load(pgcon,pgcur,i,query)
 
 		spot_id = pgcur.fetchone()[0]
-
-		#----------------------------------------------------
-		# Here will be the tag and spot tags generation
-
-		# 1. Do the user action validation and if not exists, generate the user action
-		# 2. Generate the tags
-		# 3. Generate 
-		#----------------------------------------------------
 
 		'''
 		# Generate user actions with type user action = 5 (Spots)
@@ -317,6 +258,14 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 			# Insert the data image
 			postgres_query_load(pgcon,pgcur,i,query)
 
+		#----------------------------------------------------
+		# Here will be the tag and spot tags generation
+
+		# 1. Do the user action validation and if not exists, generate the user action
+		# 2. Generate the tags
+		# 3. Generate 
+		#----------------------------------------------------
+
 		# This section is to insert in user_actions related with tags
 		pgcur.execute("SELECT st.id,t.name FROM tags t, spots_tags st WHERE st.tags_id = t.id")
 		json_data_tags = pgcur.fetchall()
@@ -327,27 +276,61 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 			# For each tags list, search for the tag_id and compare them by name
 			for j in spot_data['tags']:
 
-				# For each row in the tags table
+				tag_validator = False
+				
+				# Compare with the tags that are already stored in the tags table
 				for k in json_data_tags:
 
-					# If the tags names are equals, get the tag_id from the spots_tags table
+					# If the tags names are equals, get the tag_id
 					if j == k[1]:
 						tag_id=k[0]
+						tag_validator = True
 
-							# Check if exist a previously user_action with type_user_action = 2 (Spots tags) for the current Spot
-							pgcur.execute("SELECT id FROM user_actions WHERE spot_id="+str(spot_id)+" AND type_user_actions_id="+str(1));
-							spots_data = pgcur.fetchone()
+				# Tag not found in the tags table, so it's a New tag
+				if not tag_validator:
 
-							# If not found a previously user_action with type_user_action = 2 (Spots tags) for the current Spot, insert it
-							if not(spots_data):
+					print (bcolors.WARNING + "New Tag found: "+ str(j) + bcolors.ENDC)
+					#time.sleep(1)
 
-								# Generate user actions with type user action = 2 (Spots tags)
-								query = "INSERT INTO user_actions (type_user_actions_id,spot_id,created_at) VALUES ("+str(1)+","+str(spot_id)+",'"+spot_data['createdAt'].isoformat()+"')"
+					query = "INSERT INTO tags (name,created_at,updated_at) VALUES ('"+j+"','"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
 
-								print (bcolors.OKBLUE + "Executing User_action data migration. Row: "+ str(i) + bcolors.ENDC)
+					# Insert the new tag
+					postgres_query_load(pgcon,pgcur,i,query)
 
-								# Insert the user_actions
-								postgres_query_load(pgcon,pgcur,i,query)
+					tag_id = pgcur.fetchone()[0]
+
+				# In any case (tag already exist or new tag) insert a new spot_tag with the current tag_id
+				query = "INSERT INTO spot_tags (user_id,tags_id,created_at,updated_at) VALUES ("+str(user_id)+","+str(tag_id)+",'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
+
+				# Insert the current spots_tags
+				postgres_query_load(pgcon,pgcur,i,query)
+
+				spots_tags_id = pgcur.fetchone()[0]
+
+				# Reload the tags query
+				pgcur.execute("SELECT id,name FROM tags")
+				json_data_tags = pgcur.fetchall()
+
+				# Then generate the user_action related with the tag
+				# So, first, check if exists a previously user_action with 
+				# type_user_action = 1 (Spots tags) for the current Spot
+				pgcur.execute("SELECT id FROM user_actions WHERE spot_id="+str(spot_id)+" AND type_user_actions_id="+str(1));
+				spots_data = pgcur.fetchone()
+
+				# If not found a previously user_action with type_user_action = 1 (Spots tags) for the current Spot, insert it
+				if not(spots_data):
+
+					# Generate user actions with type user action = 1 (Spots tags)
+					query = "INSERT INTO user_actions (type_user_actions_id,spot_id,created_at) VALUES ("+str(1)+","+str(spot_id)+",'"+spot_data['createdAt'].isoformat()+"')"
+
+					print (bcolors.OKBLUE + "Executing User_action data migration. Row: "+ str(i) + bcolors.ENDC)
+
+					# Insert the user_actions
+					postgres_query_load(pgcon,pgcur,i,query)
+				
+				# If found a previously user_action with type_user_action = 1 (Spots tags) for the current Spot, do not do nothing
+				else:
+					pass
 
 	print (bcolors.OKBLUE + "Generating user_actions, spots, site_images and spot_categories seeders"+ bcolors.ENDC)
 
