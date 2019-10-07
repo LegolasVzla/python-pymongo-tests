@@ -19,11 +19,11 @@ class bcolors:
 
 def mongo_collections_list(monCli,monDB):
 	# get and list all the mongodb collections
-	collections = dict((monDB, [collection for collection in monCli[monDB].collection_names(include_system_collections=False)])
-		for monDB in monCli.database_names())
+	collections = dict((monDB, [collection for collection in monCli[monDB].list_collection_names(include_system_collections=False)])
+		for monDB in monCli.list_database_names())
 	return collections
 
-def postgres_query_load(pgcon,pgcur,data,query):
+def postgres_query_load(pgcon,pgcur,query):
 	# Load data in the postgres user table
 	pgcur.execute(query)
 	pgcon.commit()
@@ -38,18 +38,19 @@ def postgres_json_export_to_file(pgcon,pgcur,query,filename):
 
 def mongo_user_extraction(monCli,monDB,pgcon,pgcur):
 	collections = mongo_collections_list(monCli,monDB)
-	user_collection_name = collections['ibeen'][1]
+	user_collection_name = collections['ibeen'][2]
 	user_collection_data = monDB[user_collection_name]
 	query = ""
 	first_name = ""
 	last_name = ""
+	full_name = ""
 	#x = user_collection_data.find_one()
 	# Get all the user data
 	for i,user_data in enumerate(user_collection_data.find()):
 		if(i >1):
-			query = "INSERT INTO users (first_name,last_name,full_name,email,status_account,created_at,updated_at) VALUES ('"+first_name+"','"+last_name+"','"+first_name+"' '"+last_name+"', '"+user_data['email']['value']+"',1,'"+user_data['createdOn']['instant'].isoformat()+"',now())"
+			query = "INSERT INTO users (first_name,last_name,full_name,email,status_account,created_at,updated_at) VALUES ('"+first_name+"','"+last_name+"','"+full_name+"','"+user_data['email']['value']+"',1,'"+user_data['createdOn']['instant'].isoformat()+"',now())"
 			# for each mongo user document, insert in postgres user table
-			postgres_query_load(pgcon,pgcur,user_data,query)
+			postgres_query_load(pgcon,pgcur,query)
 			#time.sleep(5)
 			# pprint(data)
 			print (bcolors.OKBLUE + "Executing User data migration. Row: "+ str(i) + bcolors.ENDC)
@@ -59,7 +60,7 @@ def mongo_user_extraction(monCli,monDB,pgcon,pgcur):
 	'''
 	query = "SELECT json_agg(a.*) FROM (SELECT id, email, status_account, created_at, updated_at, is_active, is_deleted FROM users) a"
 	filename = "user"
-
+''
 	# Generate json user data
 	postgres_json_export_to_file(pgcon,pgcur,query,filename)
 	'''
@@ -89,12 +90,12 @@ def mongo_friends_extraction(monCli,monDB,pgcon,pgcur):
 		query = "INSERT INTO friendships (friend_id,friendable_type,friendable_id,status,created_at,updated_at) VALUES ("+str(user_id)+",'User',"+str(friend_id)+",2,'"+friends_data['createdAt'].isoformat()+"',now())"
 
 		# For each mongo friendships document, insert in postgres friendships table the first relationship: A is friend of B
-		postgres_query_load(pgcon,pgcur,friends_data,query)
+		postgres_query_load(pgcon,pgcur,query)
 
 		query = "INSERT INTO friendships (friend_id,friendable_type,friendable_id,status,created_at,updated_at) VALUES ("+str(user_id)+",'User',"+str(friend_id)+",2,'"+friends_data['createdAt'].isoformat()+"',now())"
 
 		# For each mongo friendships document, insert in postgres friendships table the second relationship: B is friend of A
-		postgres_query_load(pgcon,pgcur,friends_data,query)
+		postgres_query_load(pgcon,pgcur,query)
 
 		if(len(full_user_name.split(' ')) == 2):
 			first_name = full_user_name.split(' ')[0]
@@ -107,14 +108,14 @@ def mongo_friends_extraction(monCli,monDB,pgcon,pgcur):
 			last_name = full_user_name.split(' ')[2] + " " + full_user_name.split(' ')[3]
 
 		# Add the first_name and last_name to the users
-		pgcur.execute("UPDATE users SET first_name = '"+first_name+"', last_name = '"+last_name+"' WHERE id="+str(user_id))
+		pgcur.execute("UPDATE users SET first_name = '"+first_name+"', last_name = '"+last_name+"', full_name='"+friends_data['user']['fullname']+"' WHERE id="+str(user_id))
 
 		print (bcolors.OKBLUE + "Executing Friendships data migration. Row: "+ str(i) + bcolors.ENDC)
 
 	print (bcolors.OKBLUE + "Generating friendships seeder"+ bcolors.ENDC)
 
 	# Generate all the seeders needed
-	query = "SELECT json_agg(a.*) FROM (SELECT id,friend_id,friendable_id,status,created_at, updated_at,is_active,is_deleted FROM friendships) a"
+	query = "SELECT json_agg(a.*) FROM (SELECT id,friendable_type,friendable_id,friend_id,created_at,updated_at,blocker_id,status FROM friendships) a"
 	filename = "friendships"
 
 	# Generate json friendships data
@@ -123,6 +124,8 @@ def mongo_friends_extraction(monCli,monDB,pgcon,pgcur):
 def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	query = ""
 	user_id = None
+	first_name = ""
+	last_name = ""	
 	full_user_name = ""
 	category_id = None
 	tag_name = None
@@ -142,7 +145,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	pgcur.execute("SELECT id,email FROM users")
 	json_data_users = pgcur.fetchall()
 
-	pgcur.execute("SELECT id,name FROM category")
+	pgcur.execute("SELECT id,name FROM categories")
 	json_data_category = pgcur.fetchall()
 
 	pgcur.execute("SELECT id,name FROM tags")
@@ -152,13 +155,23 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	for i,spot_data in enumerate(monDB.spots.find()):
 		# Searching the user_id of the user by email comparison
 		for j in json_data_users:
+			#import pdb; pdb.set_trace()
 			if spot_data['user']['_id'] == j[1]:
 				user_id=j[0]
+			else:
 
-		# Searching the category_id of the spot category name comparison
-		for j in json_data_category:
-			if spot_data['categoryId'] == j[1]:
-				category_id=j[0]
+				query = "INSERT INTO users (email,status_account,created_at,updated_at) VALUES ('"+spot_data['user']['email']+"',1,'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
+
+				# for each mongo new user document, insert in postgres user table
+				postgres_query_load(pgcon,pgcur,query)
+
+				user_id = pgcur.fetchone()[0]
+
+				print (bcolors.OKBLUE + "New user found. Row: "+ str(i) + bcolors.ENDC)				
+
+				# Reload the users query
+				pgcur.execute("SELECT id,email FROM users")
+				json_data_users = pgcur.fetchall()
 
 		# Add missing fullnames to the users
 		if(len(spot_data['user']['fullname'].split(' ')) == 2):
@@ -172,7 +185,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 			last_name = spot_data['user']['fullname'].split(' ')[2] + " " + spot_data['user']['fullname'].split(' ')[3]
 
 		# Add the first_name and last_name to the users with missing first and last name
-		pgcur.execute("UPDATE users SET first_name = '"+first_name+"', last_name = '"+last_name+"' WHERE id="+str(user_id))
+		pgcur.execute("UPDATE users SET first_name = '"+first_name+"', last_name = '"+last_name+"', full_name = '"+spot_data['user']['fullname']+"' WHERE id="+str(user_id))
 
 		# Check if the spots has review value
 		try:
@@ -221,16 +234,20 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 
 		full_address = str(spot_data['place']['countryName']) + ', ' + city_name
 
-		query = "INSERT INTO spots (users_id,name,review,remarks,place_name,country_name,city_name,state_name, status_id,is_privated,lat,long,created_at,updated_at,full_address) VALUES ("+str(user_id)+",'"+str(spot_name)+"','"+str(review)+"','"+str(remarks)+"','"+str(place_name)+"','"+str(spot_data['place']['countryName'])+"','"+str(city_name)+"','"+str(state_name)+"',"+str(status_id)+","+str(is_privated)+","+str(spot_data['place']['point']['coordinates'][0])+","+str(spot_data['place']['point']['coordinates'][1])+",'"+spot_data['createdAt'].isoformat()+"',now(),"+full_address+") RETURNING id"
+		query = "INSERT INTO spots (users_id,name,review,remarks,place_name,country_name,city_name,state_name, status_id,is_privated,lat,long,created_at,updated_at,full_address) VALUES ("+str(user_id)+",'"+str(spot_name)+"','"+str(review)+"','"+str(remarks)+"','"+str(place_name)+"','"+str(spot_data['place']['countryName'])+"','"+str(city_name)+"','"+str(state_name)+"',"+str(status_id)+","+str(is_privated)+","+str(spot_data['place']['point']['coordinates'][0])+","+str(spot_data['place']['point']['coordinates'][1])+",'"+spot_data['createdAt'].isoformat()+"',now(),'"+full_address+"') RETURNING id"
 
 		print (bcolors.OKBLUE + "Executing Spots data migration. Row: "+ str(i) + bcolors.ENDC)
+
+		#print("spot------->",query)
+		#import pdb; pdb.set_trace()
+		#time.sleep(2)
 
 		# PoSTGis geolocalization translate code from lat and long to geom and position fields
 		#pgcur.execute("UPDATE spots SET geom = ST_SetSRID(ST_MakePoint(long,lat),4326) and position ST_SetSRID(ST_MakePoint(long,lat),4326);")
 
 		# Insert the current spot
 
-		postgres_query_load(pgcon,pgcur,i,query)
+		postgres_query_load(pgcon,pgcur,query)
 
 		spot_id = pgcur.fetchone()[0]
 
@@ -241,15 +258,20 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		print (bcolors.OKBLUE + "Executing User_actions data migration. Row: "+ str(i) + bcolors.ENDC)
 
 		# Insert the user_actions
-		postgres_query_load(pgcon,pgcur,i,query)
+		postgres_query_load(pgcon,pgcur,query)
 		'''
+
+		# Searching the category_id of the spot category name comparison
+		for j in json_data_category:
+			if spot_data['categoryId'] == j[1]:
+				category_id=j[0]
 
 		query = "INSERT INTO spot_categories (spots_id,category_id,created_at,updated_at) VALUES ("+str(spot_id)+","+str(category_id)+",'"+spot_data['createdAt'].isoformat()+"',now())"
 
 		print (bcolors.OKBLUE + "Executing Spots_categories data migration. Row: "+ str(i) + bcolors.ENDC)
 
 		# Insert the spot_categories data
-		postgres_query_load(pgcon,pgcur,i,query)				
+		postgres_query_load(pgcon,pgcur,query)				
 
 		# For each gallery, iterates over all images
 		for j,gallery_data in enumerate(spot_data['gallery']):
@@ -259,7 +281,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 			print (bcolors.OKBLUE + "Executing Site_Images data migration. Row: "+ str(j) + " of the Spot row: " + str(i) + " iteration" + bcolors.ENDC)
 
 			# Insert the data image
-			postgres_query_load(pgcon,pgcur,i,query)
+			postgres_query_load(pgcon,pgcur,query)
 
 		# This section is to insert in user_actions related with tags
 		pgcur.execute("SELECT st.id,t.name FROM tags t, spots_tags st WHERE st.tags_id = t.id")
@@ -290,7 +312,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 					query = "INSERT INTO tags (name,created_at,updated_at) VALUES ('"+j+"','"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
 
 					# Insert the new tag
-					postgres_query_load(pgcon,pgcur,i,query)
+					postgres_query_load(pgcon,pgcur,query)
 
 					tag_id = pgcur.fetchone()[0]
 
@@ -309,7 +331,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 					print (bcolors.OKBLUE + "Executing User_action data migration. Row: "+ str(i) + bcolors.ENDC)
 
 					# Insert the user_actions
-					postgres_query_load(pgcon,pgcur,i,query)
+					postgres_query_load(pgcon,pgcur,query)
 				
 				# If found a previously user_action with type_user_action = 1 (Spots tags) for the current Spot, do not do nothing
 				else:
@@ -319,7 +341,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 				query = "INSERT INTO spot_tags (users_id,user_actions_id,tags_id,created_at,updated_at) VALUES ("+str(user_id)+","+str(user_actions)+","+str(tag_id)+",'"+spot_data['createdAt'].isoformat()+"',now())"
 
 				# Insert the current spots_tags
-				postgres_query_load(pgcon,pgcur,i,query)
+				postgres_query_load(pgcon,pgcur,query)
 
 				#spots_tags_id = pgcur.fetchone()[0]
 
@@ -380,14 +402,14 @@ def mongo_tags_extraction(monCli,monDB,pgcon,pgcur):
 		query = "INSERT INTO tags (name,created_at,updated_at) VALUES ('"+tag_name+"',now(),now()) RETURNING id"
 
 		# For each mongo tags document, insert in postgres tags table
-		postgres_query_load(pgcon,pgcur,i,query)
+		postgres_query_load(pgcon,pgcur,query)
 
 		tag_id = pgcur.fetchone()[0]
 
 		query = "INSERT INTO spot_tags (users_id,tags_id,created_at,updated_at) VALUES ("+str(user_id)+","+str(tag_id)+",now(),now())"
 
 		# Generate the relationship spot_tags data
-		postgres_query_load(pgcon,pgcur,i,query)
+		postgres_query_load(pgcon,pgcur,query)
 
 		print (bcolors.OKBLUE + "Executing Tags data migration. Row: "+ str(i) + bcolors.ENDC)
 
@@ -437,7 +459,7 @@ def mongo_reports_extraction(monCli,monDB,pgcon,pgcur):
 				print (bcolors.OKBLUE + "Executing reports data migration. Row: "+ str(i) + bcolors.ENDC)
 
 				# Insert the reports
-				postgres_query_load(pgcon,pgcur,i,query)
+				postgres_query_load(pgcon,pgcur,query)
 				break
 
 	print (bcolors.OKBLUE + "Generating reports_actions seeder"+ bcolors.ENDC)
@@ -508,7 +530,7 @@ def mongo_collections_extraction(monCli,monDB,pgcon,pgcur):
 						print (bcolors.OKBLUE + "Executing collection data migration. Row: "+ str(i) + bcolors.ENDC)
 
 						# Insert the collection
-						postgres_query_load(pgcon,pgcur,i,query)
+						postgres_query_load(pgcon,pgcur,query)
 
 						collection_id = pgcur.fetchone()[0]
 
@@ -518,7 +540,7 @@ def mongo_collections_extraction(monCli,monDB,pgcon,pgcur):
 					print (bcolors.OKBLUE + "Executing spots_collections data migration. Row: "+ str(i) + bcolors.ENDC)
 
 					# Insert the spots_collections
-					postgres_query_load(pgcon,pgcur,i,query)
+					postgres_query_load(pgcon,pgcur,query)
 
 			# If the spots hasn't city name but has state name
 			elif(city_name != None and state_name == None):
@@ -548,7 +570,7 @@ def mongo_collections_extraction(monCli,monDB,pgcon,pgcur):
 						print (bcolors.OKBLUE + "Executing collection data migration. Row: "+ str(i) + bcolors.ENDC)
 
 						# Insert the collection
-						postgres_query_load(pgcon,pgcur,i,query)
+						postgres_query_load(pgcon,pgcur,query)
 
 						collection_id = pgcur.fetchone()[0]
 
@@ -558,7 +580,7 @@ def mongo_collections_extraction(monCli,monDB,pgcon,pgcur):
 					print (bcolors.OKBLUE + "Executing spots_collections data migration. Row: "+ str(i) + bcolors.ENDC)
 
 					# Insert the spots_collections
-					postgres_query_load(pgcon,pgcur,i,query)
+					postgres_query_load(pgcon,pgcur,query)
 
 			# If the spots has city name but hasn't state name
 			elif(city_name == None and state_name != None):				
@@ -588,7 +610,7 @@ def mongo_collections_extraction(monCli,monDB,pgcon,pgcur):
 						print (bcolors.OKBLUE + "Executing collection data migration. Row: "+ str(i) + bcolors.ENDC)
 
 						# Insert the collection
-						postgres_query_load(pgcon,pgcur,i,query)
+						postgres_query_load(pgcon,pgcur,query)
 
 						collection_id = pgcur.fetchone()[0]
 
@@ -598,7 +620,7 @@ def mongo_collections_extraction(monCli,monDB,pgcon,pgcur):
 					print (bcolors.OKBLUE + "Executing spots_collections data migration. Row: "+ str(i) + bcolors.ENDC)
 
 					# Insert the spots_collections
-					postgres_query_load(pgcon,pgcur,i,query)
+					postgres_query_load(pgcon,pgcur,query)
 
 	print (bcolors.OKBLUE + "Generating collections and spots_collections seeders"+ bcolors.ENDC)
 
