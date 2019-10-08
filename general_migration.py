@@ -142,6 +142,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	city_name = ""
 	state_name = ""
 	full_address = None
+	user_validator = False
 	pgcur.execute("SELECT id,email FROM users")
 	json_data_users = pgcur.fetchall()
 
@@ -158,21 +159,21 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		for j in json_data_users:
 			if spot_data['user']['_id'] == j[1]:
 				user_id=j[0]
+				user_validator = True
 				break
-			else:
-				query = "INSERT INTO users (email,status_account,created_at,updated_at) VALUES ('"+spot_data['user']['email']+"',1,'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
 
-				# for each mongo new user document, insert in postgres user table
-				postgres_query_load(pgcon,pgcur,query)
+		if not(user_validator):
+			query = "INSERT INTO users (email,status_account,created_at,updated_at) VALUES ('"+spot_data['user']['email']+"',1,'"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
 
-				user_id = pgcur.fetchone()[0]
+			# for each mongo new user document, insert in postgres user table
+			postgres_query_load(pgcon,pgcur,query)
+			user_id = pgcur.fetchone()[0]
 
-				print (bcolors.OKBLUE + "New user found. Row: "+ spot_data['user']['_id'] + bcolors.ENDC)				
+			# Reload the users query
+			pgcur.execute("SELECT id,email FROM users")
+			json_data_users = pgcur.fetchall()
 
-				# Reload the users query
-				pgcur.execute("SELECT id,email FROM users")
-				json_data_users = pgcur.fetchall()
-				break
+			print (bcolors.OKBLUE + "New user found. Row: "+ spot_data['user']['_id'] + bcolors.ENDC)
 
 		# Add missing fullnames to the users
 		if(len(spot_data['user']['fullname'].split(' ')) == 2):
@@ -306,7 +307,6 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 				
 				# Compare with the tags that are already stored in the tags table
 				for k in json_data_tags:
-					#import pdb; pdb.set_trace()
 					# If the tags names are equals, get the tag_id
 					if j == k[1]:
 						tag_id=k[0]
@@ -316,8 +316,6 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 				if not tag_validator:
 
 					print (bcolors.WARNING + "New Tag found: "+ str(j) + bcolors.ENDC)
-
-					#import pdb; pdb.set_trace()
 
 					query = "INSERT INTO tags (name,created_at,updated_at) VALUES ('"+j+"','"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
 
@@ -337,8 +335,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 				try:
 					user_actions = pgcur.fetchone()[0]
 				except Exception as e:
-					user_actions = False	
-				#import pdb; pdb.set_trace()
+					user_actions = False
 
 				# If not found a previously user_action with type_user_action = 1 (Spots tags) for the current Spot, insert it
 				if not user_actions:
@@ -382,7 +379,6 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	# query = "SELECT json_agg(a.*) FROM (SELECT * FROM spots) a"
 	# filename = "spots"
 
-	# #import pdb; pdb.set_trace()
 	# #query = "select json_agg(a.*) from (select * from spots where id = 803) a"
 
 	# # Generate json spots data
@@ -662,7 +658,7 @@ def main():
 	mongo_user_extraction(monCli,monDB,pgcon,pgcur)
 	mongo_friends_extraction(monCli,monDB,pgcon,pgcur)
 	mongo_spots_extraction(monCli,monDB,pgcon,pgcur)
-	#mongo_tags_extraction(monCli,monDB,pgcon,pgcur)
+	mongo_tags_extraction(monCli,monDB,pgcon,pgcur)
 	#mongo_reports_extraction(monCli,monDB,pgcon,pgcur)
 	#mongo_collections_extraction(monCli,monDB,pgcon,pgcur)
 
