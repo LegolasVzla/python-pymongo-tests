@@ -119,35 +119,37 @@ def mongo_friends_extraction(monCli,monDB,pgcon,pgcur):
 			if friends_data['friend']['_id'] == j[1]:
 				friend_id=j[0]
 
-		pgcur.execute("select friendable_id,friend_id from friendships where (friendable_id ="+str(friend_id)+" and friend_id="+str(user_id)+")")
+		if (user_id != friend_id):
 
-		# Only insert this friendship it not exists
-		if not pgcur.fetchone():
+			pgcur.execute("select friendable_id,friend_id from friendships where (friendable_id ="+str(friend_id)+" and friend_id="+str(user_id)+")")
 
-			print (bcolors.OKBLUE + "Executing Friendships data migration. Row: "+ str(i) + bcolors.ENDC)
+			# Only insert this friendship it not exists
+			if not pgcur.fetchone():
 
-			query = "INSERT INTO friendships (friend_id,friendable_type,friendable_id,status,created_at,updated_at) VALUES ("+str(user_id)+",'User',"+str(friend_id)+",2,'"+friends_data['createdAt'].isoformat()+"',now())"
+				print (bcolors.OKBLUE + "Executing Friendships data migration. Row: "+ str(i) + bcolors.ENDC)
 
-			# For each mongo friendships document, insert in postgres friendships table the first relationship: A is friend of B
-			postgres_query_load(pgcon,pgcur,query)
+				query = "INSERT INTO friendships (friend_id,friendable_type,friendable_id,status,created_at,updated_at) VALUES ("+str(user_id)+",'User',"+str(friend_id)+",2,'"+friends_data['createdAt'].isoformat()+"',now())"
 
-			query = "INSERT INTO friendships (friend_id,friendable_type,friendable_id,status,created_at,updated_at) VALUES ("+str(friend_id)+",'User',"+str(user_id)+",2,'"+friends_data['createdAt'].isoformat()+"',now())"
+				# For each mongo friendships document, insert in postgres friendships table the first relationship: A is friend of B
+				postgres_query_load(pgcon,pgcur,query)
 
-			# For each mongo friendships document, insert in postgres friendships table the second relationship: B is friend of A
-			postgres_query_load(pgcon,pgcur,query)
+				query = "INSERT INTO friendships (friend_id,friendable_type,friendable_id,status,created_at,updated_at) VALUES ("+str(friend_id)+",'User',"+str(user_id)+",2,'"+friends_data['createdAt'].isoformat()+"',now())"
 
-			if(len(full_user_name.split(' ')) == 2):
-				first_name = full_user_name.split(' ')[0]
-				last_name = full_user_name.split(' ')[1]
-			elif(len(full_user_name.split(' ')) == 3):
-				first_name = full_user_name.split(' ')[0] + " " + full_user_name.split(' ')[1]
-				last_name = full_user_name.split(' ')[2]
-			elif(len(full_user_name.split(' ')) == 4):
-				first_name = full_user_name.split(' ')[0] + " " + full_user_name.split(' ')[1]
-				last_name = full_user_name.split(' ')[2] + " " + full_user_name.split(' ')[3]
+				# For each mongo friendships document, insert in postgres friendships table the second relationship: B is friend of A
+				postgres_query_load(pgcon,pgcur,query)
 
-			# Add the first_name and last_name to the users
-			pgcur.execute("UPDATE users SET first_name = '"+first_name+"', last_name = '"+last_name+"', full_name='"+friends_data['user']['fullname']+"' WHERE id="+str(user_id))
+				if(len(full_user_name.split(' ')) == 2):
+					first_name = full_user_name.split(' ')[0]
+					last_name = full_user_name.split(' ')[1]
+				elif(len(full_user_name.split(' ')) == 3):
+					first_name = full_user_name.split(' ')[0] + " " + full_user_name.split(' ')[1]
+					last_name = full_user_name.split(' ')[2]
+				elif(len(full_user_name.split(' ')) == 4):
+					first_name = full_user_name.split(' ')[0] + " " + full_user_name.split(' ')[1]
+					last_name = full_user_name.split(' ')[2] + " " + full_user_name.split(' ')[3]
+
+				# Add the first_name and last_name to the users
+				pgcur.execute("UPDATE users SET first_name = '"+first_name+"', last_name = '"+last_name+"', full_name='"+friends_data['user']['fullname']+"' WHERE id="+str(user_id))
 
 	#print (bcolors.OKBLUE + "Generating friendships seeder"+ bcolors.ENDC)
 
