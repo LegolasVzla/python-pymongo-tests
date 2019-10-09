@@ -674,8 +674,8 @@ def main():
 	try:
 		monCli, monDB = mongoConnection()
 		pgcon, pgcur = postgresConnection()
-	except expression as identifier:
-		print (bcolors.OKGREEN + "Connection with mongo or postgres database failed: " + bcolors.ENDC)
+	except Exception as e:
+		print (bcolors.OKGREEN + "Connection with mongo or postgres database failed: " + str(e) + bcolors.ENDC)
 		os._exit(0)
 
 	postgres_delete_all(pgcur)

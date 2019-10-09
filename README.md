@@ -38,8 +38,9 @@ friends | friendships
 categories | categories
 tags | spot_tags, tags
 reports | reports_actions
-collections | collections, spots_collections
+place_summaries | collections, spots_collections
 spots | spots, user_actions, site_images
+reports | reports_actions
 
 ## Contributions
 ------------------------
