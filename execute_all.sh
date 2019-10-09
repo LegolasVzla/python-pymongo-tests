@@ -9,3 +9,7 @@ psql -U postgres -d result_database -a -f ./public/tables/user_actions.sql
 psql -U postgres -d result_database -a -f ./public/tables/spot_tags.sql
 psql -U postgres -d result_database -a -f ./public/tables/spot_categories.sql
 psql -U postgres -d result_database -a -f ./public/tables/site_images.sql
+psql -U postgres -d result_database -a -f ./public/tables/collections.sql
+psql -U postgres -d result_database -a -f ./public/tables/spot_collections.sql
+psql -U postgres -d result_database -a -f ./public/tables/reports_type.sql
+psql -U postgres -d result_database -a -f ./public/tables/reports_actions.sql
