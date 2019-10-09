@@ -104,7 +104,6 @@ def mongo_friends_extraction(monCli,monDB,pgcon,pgcur):
 	full_user_name = ""
 	first_name = ""
 	last_name = ""
-	friendships_exists_validator = False
 	pgcur.execute("SELECT id,email FROM users")
 	json_data_users = pgcur.fetchall()
 
@@ -180,6 +179,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	state_name = ""
 	full_address = None
 	user_validator = False
+	category_validator = False
 	pgcur.execute("SELECT id,email FROM users")
 	json_data_users = pgcur.fetchall()
 
@@ -194,6 +194,7 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 	for i,spot_data in enumerate(monDB.spots.find()):
 		# Searching the user_id of the user by email comparison
 		for j in json_data_users:
+			user_validator = False
 			if spot_data['user']['_id'] == j[1]:
 				user_id=j[0]
 				user_validator = True
@@ -300,11 +301,13 @@ def mongo_spots_extraction(monCli,monDB,pgcon,pgcur):
 		'''
 
 		# Searching the category_id of the spot category name comparison
-		if json_data_category:
-			for j in json_data_category:
-				if spot_data['categoryId'] == j[1]:
-					category_id=j[0]
-		else:
+		for j in json_data_category:
+			category_validator = False			
+			if spot_data['categoryId'] == j[1]:
+				category_id=j[0]
+				category_validator = True
+				break
+		if not category_validator:
 			query = "INSERT INTO categories (name,created_at,updated_at) VALUES ('"+spot_data['categoryId']+"','"+spot_data['createdAt'].isoformat()+"',now()) RETURNING id"
 
 			# Insert the categories data
@@ -458,6 +461,7 @@ def mongo_reports_extraction(monCli,monDB,pgcon,pgcur):
 
 				# Searching the reports_type_id of reports action by type comparison
 				for j in json_reports_type:
+					json_reports_type_validator = False
 					if reports_data['type'] == j[1]:
 						reports_type_id=j[0]
 						json_reports_type_validator = True
